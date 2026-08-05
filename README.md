@@ -1,72 +1,98 @@
 # Reading Mirror
 
-Reading Mirror 是一个面向 macOS Codex 的个人阅读回应 Skill。它读取用户明确指定的 Apple 备忘录，从用户自己的微信读书划线与笔记中检索相关材料，生成回应，并安全写回原备忘录。
+> 让你读过的书，在你真正需要的时候回来回应你。
 
-## 主要能力
+我们读过很多书，划过很多句子，也曾在某个瞬间写下非常诚实的想法。
 
-- 通过 Note ID、准确标题或用户提供的连续原文定位 Apple 备忘录。
-- 唯一命中时直接回填；多条命中时只展示元数据并请用户确认。
-- 使用已安装的 `weread-skills` 同步用户自己的微信读书划线和笔记。
-- 校验引用来源，避免把模型生成文本当成书中原句。
-- 支持多个 `（用我读过的书回答）` 标记及无标记追加模式。
-- 写入前检查密码保护、共享状态、附件和并发修改。
-- 通过 Apple Notes 原生 Block Quote 样式展示引用。
+可当我们后来因为工作焦虑、关系遗憾，或者对未来失去期待时，那些曾经触动过自己的文字，往往仍然安静地躺在微信读书里。我们知道自己读过，却很难在需要时重新找到它们。
 
-## 环境要求
+Reading Mirror 想解决的就是这件事：
 
-- macOS 与 Apple Notes
-- Codex
-- Python 3
-- [ripgrep](https://github.com/BurntSushi/ripgrep)
-- 已安装并启用的 `weread-skills`
-- 按 `weread-skills` 当前说明配置的 `WEREAD_API_KEY`
+**把你此刻正在经历的问题，和过去真实读过、划过、思考过的内容重新连接起来。**
 
-Reading Mirror 不包含、替代或绕过微信读书数据访问 Skill。若 `weread-skills` 未安装或未在当前 Codex 会话中启用，工作流会停止并提示用户处理依赖。
+它不是再给你推荐几本书，也不是从互联网上找一句看起来正确的名言。它会从你自己的微信读书划线和笔记里，找到真正与当下有关的内容，理解它为什么曾经打动你，再把回应写回原来的 Apple 备忘录。
 
-## 安装
+## 它是怎么工作的
 
-```bash
-git clone https://github.com/ysqqqq37/reading-mirror.git ~/.codex/skills/reading-mirror
-```
+当你在 Apple 备忘录里写下一段困惑，Reading Mirror 会：
 
-重新打开 Codex 会话后，确认 Available Skills 中同时包含 `reading-mirror` 和 `weread-skills`。
+1. 读懂你此刻真正卡住的是什么；
+2. 回到你自己的微信读书记录中，寻找有关联的原句和旧笔记；
+3. 把“书里说了什么”“你当时怎么想”和“它现在为什么能回应你”放在一起；
+4. 将完整回答写回同一条备忘录，而不是让它散落在一次性的聊天记录里。
 
-## 使用
+最终得到的不是一组书摘，而是一次现在的你与过去的自己之间的对话。
 
-可以直接指定备忘录标题：
+## 它和普通 AI 回答有什么不同
 
-```text
-使用 Reading Mirror 回答 Apple 备忘录《我的困惑》
-```
+| 普通 AI 回答 | Reading Mirror |
+| --- | --- |
+| 从通用知识或网络材料出发 | 只从你自己的微信读书划线和笔记出发 |
+| 给出“正确但可能与我无关”的道理 | 找回真正触动过你的表达 |
+| 只引用书中的话 | 同时保留你当时写下的想法 |
+| 回答停留在聊天窗口 | 回填进原来的 Apple 备忘录 |
+| 每次对话从头开始 | 让阅读记录持续参与你之后的人生 |
 
-也可以在备忘录正文中放置：
+Reading Mirror 不会为了完成回答而硬凑书摘。如果你的阅读记录里没有足以回应当前问题的内容，它会直接告诉你没有找到。
+
+## 什么时候适合使用
+
+- 你在微信读书里留下了很多划线，却很少重新翻看；
+- 你习惯在 Apple 备忘录里记录情绪、困惑和生活感受；
+- 你不想再得到一套泛泛的人生建议，而想看看过去读过的东西能否真正帮助现在的自己；
+- 你希望阅读不只发生在读完一本书的那一刻，而能在之后的生活中继续产生意义。
+
+## 使用方式
+
+在备忘录中写下你的真实问题，并加入：
 
 ```text
 （用我读过的书回答）
 ```
 
-如果只向 Codex 提供一段备忘录原文，Reading Mirror 只进行本机连续文本精确匹配，不做语义或模糊扫描。唯一命中时直接回填；多条命中时会先让用户选择。
-
-## 数据存储
-
-Skill 代码与个人数据分开存放。默认运行数据目录为：
+然后告诉 Codex：
 
 ```text
-~/Library/Application Support/Codex/reading-mirror/
-├── mirror/
-└── state/
+使用 Reading Mirror 回答 Apple 备忘录《备忘录标题》
 ```
 
-用户可以通过 `READING_MIRROR_HOME` 指定其他位置。不要把运行数据目录提交到公开仓库。完整说明见 [PRIVACY.md](PRIVACY.md)。
+Reading Mirror 会在找到唯一目标时直接完成回填。如果存在多条同名或重复命中的备忘录，它会先请你确认，不会把回答随意写进某一条笔记。
 
-## Apple Notes 权限
+也可以直接把一段备忘录原文交给它。它只会做连续原文的本机精确匹配，不会通过关键词或语义搜索翻看其他无关笔记。
 
-第一次使用时，macOS 可能要求调用方控制 Notes。允许后，脚本才能读取和写入用户指定的备忘录。原生引用块需要通过 Notes 编辑器应用段落样式，因此还可能需要相应的界面自动化权限。
+## 重要边界
 
-## 第三方代码
+- 只使用你的微信读书划线和个人笔记，不使用热门划线、公开书评或网络书摘；
+- 书中原句必须能够回到真实记录中验证，不会把 AI 生成的话伪装成引用；
+- Apple Notes 中的引用、出处和旧笔记会以引用块展示，解释保持普通正文；
+- 共享笔记、带附件笔记和发生并发修改的笔记会触发额外保护；
+- 本地镜像和运行状态保存在每位用户自己的设备上，不随 Skill 一起发布；完成回答所需的相关片段会进入当前 Codex 会话。
 
-Apple Notes 基础脚本来自 `lishix520/apple-notes-skill`；富文本转换设计参考 `midboss1028-beep/apple-notes-richtext-skill`。两者均为 MIT License，版权与许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 和 `licenses/`。
+## 安装前需要
 
-## License
+- macOS、Apple Notes 与 Codex；
+- 已安装并启用的 `weread-skills`；
+- 按 `weread-skills` 的说明配置 `WEREAD_API_KEY`；
+- Python 3 与 [ripgrep](https://github.com/BurntSushi/ripgrep)。
 
-Reading Mirror 自有代码以 MIT License 发布，见 [LICENSE](LICENSE)。第三方组件继续适用各自的许可证。
+安装 Reading Mirror：
+
+```bash
+git clone https://github.com/ysqqqq37/reading-mirror.git ~/.codex/skills/reading-mirror
+```
+
+重新打开 Codex 会话，确认 Available Skills 中同时包含 `reading-mirror` 和 `weread-skills`。
+
+第一次使用时，macOS 可能会询问是否允许调用方控制 Notes。原生引用块需要通过 Notes 编辑器应用段落样式，因此还可能需要相应的界面自动化权限。
+
+## 隐私
+
+Skill 代码和个人数据分开存放。每位用户会在自己的 Mac 上生成独立的微信读书镜像与 Apple Notes 运行状态；仓库中不包含任何用户的书摘、笔记、Note ID 或 API Key。运行时，为完成回答而选中的备忘录正文、划线和个人笔记会进入当前 Codex 会话。
+
+完整的数据范围、存储位置与删除方式见 [PRIVACY.md](PRIVACY.md)。
+
+## 开源说明
+
+Apple Notes 基础脚本来自 `lishix520/apple-notes-skill`；富文本转换设计参考 `midboss1028-beep/apple-notes-richtext-skill`。第三方版权与许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 和 `licenses/`。
+
+Reading Mirror 自有代码以 [MIT License](LICENSE) 发布。

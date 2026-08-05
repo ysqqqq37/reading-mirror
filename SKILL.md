@@ -90,7 +90,7 @@ Once one ID is resolved, read by ID and create the guarded Reading Mirror snapsh
 python3 "$SKILL_DIR/scripts/apple_notes.py" inspect --id 'NOTE_ID'
 ```
 
-The second command adds plaintext, attachment/shared/password checks, marker identities, and body hashes that the general-purpose upstream CLI does not provide. Use the guarded snapshot as the only write source of truth.
+The second command adds plaintext, attachment/shared/password checks, marker identities, body hashes, and the pre-write modification timestamp that the general-purpose upstream CLI does not provide. Use the guarded snapshot as the only write source of truth.
 
 Treat an explicit request such as “用 Reading Mirror 回答备忘录 X” as authorization to update that same note after the response is ready. Ask again immediately before writing when the note is shared because collaborators will see the change.
 
@@ -185,11 +185,23 @@ python3 "$SKILL_DIR/scripts/render_response.py" < response.json
 
 Use the returned `html` for Notes and `plaintext` for text verification. It emits UTF-8-safe HTML fragments with explicit `<div>` paragraphs. A quotation and its `——《书名》…` source line are nested inside the same `<blockquote>`; a historical annotation receives its own `<blockquote>`; explanations remain ordinary `<div>` content. Preserve the returned `quote_blocks` list for native Apple Notes formatting after the guarded text write. Every `quote_blocks[].plaintext` value contains one verified quotation followed by its source line; both lines belong to the same visual quote block.
 
+Do not add calendar dates to the renderer input, explanations, or rendered fragments. `apple_notes.py write` owns date boundaries because only the guarded writer has the fresh Apple Notes modification timestamp and the actual local write time.
+
 The renderer loads quotation, source, and historical-note text from the local mirror itself; it rejects arbitrary provenance text, missing records, ambiguous linked annotations, and duplicate record IDs.
 
 If no sufficiently relevant personal reading trace exists, render the fallback message instead of forcing a weak citation.
 
 ### 7. Prepare all replacements, write once, then re-read
+
+Every guarded write preserves the chronology that Apple Notes would otherwise hide when it updates the note's modification time:
+
+1. Convert the fresh pre-write `modification_date` to the user's local timezone and format it exactly as `YYYY年MM月DD号`.
+2. If the effective original note text does not already begin with a date in that exact format, insert the pre-write modification date once at the very beginning of the existing note.
+3. Prefix every newly generated Reading Mirror response with the local write date in the same format. In marker mode, each replacement gets its own date boundary; all replacements in one write use the same date.
+4. Keep date lines outside quotation and historical-note Block Quote selections. They are chronological separators, not cited material.
+5. Preserve the exact fresh pre-write Apple Note title as title metadata after assigning the new body. The original-text date must remain the first visible body paragraph; never move it below the former first line as a title workaround.
+
+Do not hand-author, pre-insert, or guess these dates in response JSON. The writer derives them immediately before mutation, returns `date_stamps` metadata, and avoids duplicating an existing leading original-text date.
 
 For marker mode, submit all replacements together. Include the exact hashes and marker identities returned by the original inspection:
 
@@ -225,9 +237,9 @@ For append mode, use `action: append` with `content_html` and `content_plaintext
 python3 "$SKILL_DIR/scripts/apple_notes.py" write < write-request.json
 ```
 
-The script re-reads the note, validates both hashes, validates all marker identities, refuses unsafe notes, writes once through UTF-8 stdin, and verifies the resulting text. Do not use the vendored CLI's raw `append-note-html` command for Reading Mirror output: it passes HTML as an argument and lacks the attachment/plaintext safeguards required here. A hash conflict means the note changed: discard the pending write, inspect again, and rebuild against the new content.
+The script re-reads the note, validates both hashes, validates all marker identities, derives both local date boundaries, preserves the pre-write title separately from the body, refuses unsafe notes, writes once through UTF-8 stdin, and verifies the resulting title and text. Do not use the vendored CLI's raw `append-note-html` command for Reading Mirror output: it passes HTML as an argument and lacks the attachment/plaintext/date/title safeguards required here. A hash conflict means the note changed: discard the pending write, inspect again, and rebuild against the new content.
 
-After the guarded HTML write, independently run `inspect --id NOTE_ID` and verify the complete plaintext, placement, and marker removal before changing paragraph styles.
+After the guarded HTML write, independently run `inspect --id NOTE_ID` and verify that the title is byte-for-byte unchanged, the original-text date is the first visible body paragraph, response dates are correctly placed, the complete plaintext matches, and all target markers are gone before changing paragraph styles.
 
 Then load and follow the available Computer Use Skill to apply Apple Notes' native **Block Quote** paragraph style to every entry returned in `quote_blocks`, in document order:
 
@@ -249,7 +261,7 @@ python3 "$SKILL_DIR/scripts/run_state.py" record < run-record.json
 
 Never claim success without both the post-write text inspection and the native Block Quote UI verification.
 
-For a uniquely resolved write-back request, the final chat response should be a concise completion report: target title, whether all markers were replaced or content was appended, text verification status, and native quote-style verification status. Do not duplicate the full generated answer in chat unless the user explicitly asks to see it there.
+For a uniquely resolved write-back request, the final chat response should be a concise completion report: target title, whether all markers were replaced or content was appended, date-boundary verification, text verification status, and native quote-style verification status. Do not duplicate the full generated answer in chat unless the user explicitly asks to see it there.
 
 ## Non-negotiable boundaries
 
@@ -270,6 +282,7 @@ For a uniquely resolved write-back request, the final chat response should be a 
 - `scripts/check_dependencies.py`: preflight validation for the required WeRead Skill and optional API-key presence.
 - `scripts/apple-notes/notes.sh`: vendored upstream Apple Notes search/read/create/append substrate.
 - `scripts/apple_notes.py`: Reading Mirror's exact-note inspection and guarded UTF-8 write-back envelope.
+- `scripts/date_stamps.py`: local-time `YYYY年MM月DD号` chronology boundaries and duplicate prevention.
 - `scripts/replace_markers.py`: pure all-marker validation and last-to-first HTML/plaintext replacement.
 - `scripts/sync_weread.py`: paginated, per-book incremental WeRead mirror.
 - `scripts/retrieve_with_rg.py`: fixed-string retrieval returning complete records.
