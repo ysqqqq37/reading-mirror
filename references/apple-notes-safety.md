@@ -19,7 +19,11 @@ Require all of the following:
 - a shared note has explicit action-time confirmation;
 - the current HTML-body and plaintext hashes equal the inspected hashes;
 - marker count, order, and preceding-context hashes still match;
-- marker mode includes one replacement for every marker.
+- marker mode includes one replacement for every marker;
+- the original-text date is derived from the fresh pre-write Notes modification timestamp in the user's local timezone;
+- every generated response receives the local write date, and neither date is supplied by model-authored content;
+- the exact fresh pre-write note title is captured for restoration after body assignment;
+- the title still equals that captured value inside the guarded write transaction;
 - `replace_markers.py` succeeds against the original HTML/plaintext snapshot before the guarded writer repeats the same validation on its fresh snapshot.
 
 If any check fails, perform no write.
@@ -44,8 +48,13 @@ Use both `body_sha256` and `plaintext_sha256` from the original inspection. The 
 After writing, re-read by Note ID and verify:
 
 - every target marker is gone;
+- an effective original body begins with exactly one `YYYY年MM月DD号` date boundary;
+- each new Reading Mirror response begins with the current local `YYYY年MM月DD号` date boundary;
+- the Apple Note title is exactly unchanged from the fresh pre-write snapshot;
 - generated plaintext is present in the expected order;
 - no unrelated content disappeared;
 - the post-write hashes are recorded only after verification.
+
+Apple Notes may derive `name` from the first body line when `body` is assigned. Treat the title and body as separate invariants: keep the original-text date as the first visible body paragraph, then restore the captured `name` and verify it. Never move the date beneath the former first line to make the sidebar title look correct.
 
 Automation-permission errors may require the user to allow the calling app to control Notes in System Settings. Report that concrete requirement; do not pretend the write succeeded.

@@ -7,9 +7,18 @@ import argparse
 import json
 import subprocess
 import sys
+from datetime import datetime
 from typing import Any
 
 from common import normalize_text, sha256_text
+from date_stamps import (
+    DateStampError,
+    date_generated_fragment,
+    format_date,
+    note_modification_date_stamp,
+    prepend_date,
+    should_date_original,
+)
 from marker_logic import DEFAULT_MARKER, analyze_markers
 from replace_markers import MarkerReplacementError, prepare_marker_replacement
 
@@ -99,6 +108,8 @@ if (matches.length !== 1) {
   const before = serialize(note);
   if (before.body !== request.expected_body) {
     JSON.stringify({status: "conflict"});
+  } else if (before.title !== request.expected_title) {
+    JSON.stringify({status: "title_conflict"});
   } else if (before.password_protected) {
     JSON.stringify({status: "password_protected"});
   } else if (before.attachment_count === null) {
@@ -108,9 +119,29 @@ if (matches.length !== 1) {
   } else if (before.shared && !request.allow_shared) {
     JSON.stringify({status: "shared_confirmation_required"});
   } else {
-    note.body = request.new_body;
-    const after = serialize(note);
-    JSON.stringify({status: "ok", note: after});
+    let result;
+    try {
+      // Notes normally derives the displayed title from the first body line.
+      // Restore the explicit title after replacing the body so a leading date
+      // remains body content instead of becoming the note title.
+      note.body = request.new_body;
+      note.name = before.title;
+      const after = serialize(note);
+      if (after.title !== before.title) {
+        note.body = before.body;
+        note.name = before.title;
+        result = {status: "title_preservation_failed"};
+      } else {
+        result = {status: "ok", note: after, title_preserved: true};
+      }
+    } catch (error) {
+      try {
+        note.body = before.body;
+        note.name = before.title;
+      } catch (rollbackError) {}
+      result = {status: "write_failed", message: String(error)};
+    }
+    JSON.stringify(result);
   }
 }
 '''
@@ -210,7 +241,12 @@ def enrich(note: dict[str, Any], marker: str) -> dict[str, Any]:
     }
 
 
-def validate_write_request(request: dict[str, Any], note: dict[str, Any]) -> tuple[str, str, list[str]]:
+def validate_write_request(
+    request: dict[str, Any],
+    note: dict[str, Any],
+    *,
+    write_time: datetime | None = None,
+) -> tuple[str, str, list[str], dict[str, Any]]:
     for key in ("note_id", "expected_body_sha256", "expected_plaintext_sha256", "action"):
         if not isinstance(request.get(key), str) or not request[key]:
             raise NotesError(f"{key} is required")
@@ -234,6 +270,23 @@ def validate_write_request(request: dict[str, Any], note: dict[str, Any]) -> tup
     plaintext = note["plaintext"]
     action = request["action"]
     verification_texts: list[str] = []
+    write_moment = write_time or datetime.now().astimezone()
+    if write_moment.tzinfo is None:
+        raise NotesError("Current write time is missing a timezone")
+    try:
+        original_stamp = note_modification_date_stamp(
+            note.get("modification_date"),
+            local_timezone=write_moment.tzinfo if write_time is not None else None,
+        )
+        write_stamp = format_date(write_moment)
+    except DateStampError as exc:
+        raise NotesError(str(exc)) from exc
+    add_original_stamp = should_date_original(plaintext)
+    date_metadata = {
+        "original_text_date": original_stamp if add_original_stamp else None,
+        "original_text_date_added": add_original_stamp,
+        "write_date": write_stamp,
+    }
 
     if action == "append":
         content_html = request.get("content_html")
@@ -242,10 +295,22 @@ def validate_write_request(request: dict[str, Any], note: dict[str, Any]) -> tup
             raise NotesError("append requires non-empty content_html")
         if not isinstance(content_plaintext, str) or not content_plaintext.strip():
             raise NotesError("append requires non-empty content_plaintext")
+        content_html, content_plaintext = date_generated_fragment(
+            content_html=content_html,
+            content_plaintext=content_plaintext,
+            stamp=write_stamp,
+        )
+        if add_original_stamp:
+            body, plaintext = prepend_date(body_html=body, plaintext=plaintext, stamp=original_stamp)
         verification_texts.append(content_plaintext)
         separator = "" if not body.strip() else "<br><br>"
         plaintext_separator = "" if not plaintext else "\n\n"
-        return body + separator + content_html, plaintext + plaintext_separator + content_plaintext, verification_texts
+        return (
+            body + separator + content_html,
+            plaintext + plaintext_separator + content_plaintext,
+            verification_texts,
+            date_metadata,
+        )
 
     if action != "replace_markers":
         raise NotesError("action must be append or replace_markers")
@@ -255,16 +320,40 @@ def validate_write_request(request: dict[str, Any], note: dict[str, Any]) -> tup
     replacements = request.get("replacements")
     if not isinstance(replacements, list):
         raise NotesError("replace_markers requires replacements")
+    dated_replacements: list[dict[str, Any]] = []
+    for replacement in replacements:
+        if not isinstance(replacement, dict):
+            raise NotesError("Each replacement must be an object")
+        content_html = replacement.get("content_html")
+        content_plaintext = replacement.get("content_plaintext")
+        if not isinstance(content_html, str) or not isinstance(content_plaintext, str):
+            raise NotesError("Each replacement requires string content_html and content_plaintext")
+        dated_html, dated_plaintext = date_generated_fragment(
+            content_html=content_html,
+            content_plaintext=content_plaintext,
+            stamp=write_stamp,
+        )
+        dated_replacements.append(
+            {**replacement, "content_html": dated_html, "content_plaintext": dated_plaintext}
+        )
     try:
         prepared = prepare_marker_replacement(
             body_html=body,
             plaintext=plaintext,
             marker=marker,
-            replacements=replacements,
+            replacements=dated_replacements,
         )
     except MarkerReplacementError as exc:
         raise NotesError(str(exc)) from exc
-    return prepared["body_html"], prepared["plaintext"], prepared["verification_texts"]
+    new_body = prepared["body_html"]
+    new_plaintext = prepared["plaintext"]
+    if add_original_stamp:
+        new_body, new_plaintext = prepend_date(
+            body_html=new_body,
+            plaintext=new_plaintext,
+            stamp=original_stamp,
+        )
+    return new_body, new_plaintext, prepared["verification_texts"], date_metadata
 
 
 def compact_snapshot(note: dict[str, Any], marker: str) -> dict[str, Any]:
@@ -284,13 +373,14 @@ def command_write(request: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(marker, str) or not marker:
         raise NotesError("marker must be a non-empty string")
     current = enrich(one_note(note_id=note_id), marker)
-    new_body, expected_after_plaintext, verification_texts = validate_write_request(request, current)
+    new_body, expected_after_plaintext, verification_texts, date_metadata = validate_write_request(request, current)
 
     response = run_jxa(
         WRITE_JXA,
         {
             "note_id": note_id,
             "expected_body": current["body"],
+            "expected_title": current["title"],
             "new_body": new_body,
             "allow_shared": request.get("allow_shared") is True,
         },
@@ -299,16 +389,26 @@ def command_write(request: dict[str, Any]) -> dict[str, Any]:
     if status != "ok":
         messages = {
             "conflict": "conflict: Apple Note changed during the guarded write",
+            "title_conflict": "conflict: Apple Note title changed during the guarded write",
             "not_unique": "Apple Note ID was not resolved uniquely during write",
             "password_protected": "Refusing to write a password-protected Apple Note",
             "attachments_present": "Refusing HTML write-back because attachments appeared before write",
             "attachment_check_failed": "Refusing write-back because Apple Notes attachments could not be verified",
             "shared_confirmation_required": "Shared Apple Note requires explicit action-time confirmation",
+            "title_preservation_failed": "Apple Note body was rolled back because its original title could not be preserved",
+            "write_failed": "Apple Notes write failed and the original body/title were restored",
         }
-        raise NotesError(messages.get(str(status), f"Apple Notes write failed: {status}"))
+        message = messages.get(str(status), f"Apple Notes write failed: {status}")
+        if response.get("message"):
+            message += f": {response['message']}"
+        raise NotesError(message)
     written = response.get("note")
     if not isinstance(written, dict):
         raise NotesError("Apple Notes write did not return a verification snapshot")
+    if written.get("title") != current.get("title"):
+        raise NotesError(
+            "Write completed but the Apple Note title changed; inspect the note before any further action"
+        )
     after = enrich(written, marker)
     after_plaintext = after["plaintext"]
     # Notes may rewrite HTML paragraph boundaries into extra blank lines or
@@ -324,7 +424,12 @@ def command_write(request: dict[str, Any]) -> dict[str, Any]:
             raise NotesError("Write completed but generated plaintext could not be verified; inspect the note manually")
     if request["action"] == "replace_markers" and after["markers"]:
         raise NotesError("Write completed but at least one target marker remains")
-    return {"status": "ok", "note": compact_snapshot(written, marker)}
+    return {
+        "status": "ok",
+        "note": compact_snapshot(written, marker),
+        "date_stamps": date_metadata,
+        "title_preserved": response.get("title_preserved") is True,
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:

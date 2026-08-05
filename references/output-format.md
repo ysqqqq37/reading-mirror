@@ -1,6 +1,6 @@
 # Output format
 
-Begin directly with the first quotation or unlinked historical note. Do not repeat the current Apple Note text. Do not add headings such as “与你这句话有关” or “Reading Mirror 回答”.
+The rendered response fragment begins directly with the first quotation or unlinked historical note. Do not repeat the current Apple Note text. Do not add headings such as “与你这句话有关” or “Reading Mirror 回答”. The guarded Apple Notes writer, not the renderer or model, adds a separate local `YYYY年MM月DD号` line before the generated fragment.
 
 ## Citation block invariant
 
@@ -77,3 +77,5 @@ The renderer owns HTML generation. Do not ask the model to author or interpolate
 The source stays inside the same semantic quote block as the quotation. Historical notes use a separate quote block; explanations never inherit quote styling. Omit the historical-note section when there is no verified personal annotation.
 
 `quote_blocks` contains the exact quotation-plus-source selections that must receive Apple Notes' native Block Quote paragraph style. HTML `<blockquote>` is semantic staging only: the Notes scripting bridge may flatten it, so its presence does not prove that the native quote bar exists.
+
+Date lines never belong to `quote_blocks`. The pre-write Notes modification date labels original text once, and the local write date labels each generated response; both remain ordinary paragraphs outside citation styling. The original-text date is the first visible body paragraph. Preserve the Apple Note title through its separate title metadata; do not put the title ahead of the date inside the body as a workaround.
