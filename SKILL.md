@@ -1,6 +1,6 @@
 ---
 name: reading-mirror
-description: Resolve one intended Apple Note by Note ID, exact title, or substantial exact visible text supplied by the user; use the installed weread-skills Skill to retrieve genuinely related quotations and personal annotations from the user's WeRead history; reason across those reading traces; and write the result back to the same note. Use when the user asks to “用我读过的书回答”, invokes Reading Mirror, asks to answer a specified Apple Note from their own reading history, supplies a passage copied from the target note, or places one or more `（用我读过的书回答）` markers in a note. Supports unique-candidate automatic write-back, ambiguity confirmation, multiple marker-specific responses, incremental WeRead mirroring, exact-text retrieval with rg plus corpus reading, quotation verification, concurrency checks, and safe write-back for attachment-free notes.
+description: Resolve one intended Apple Note by Note ID, exact title, or substantial exact visible text; use the installed weread-skills Skill to retrieve related quotations and personal annotations from the user's WeRead history; reason across them; and write the result back to the same note. Use whenever the user asks Codex to answer or respond to a particular Apple Note, an item inside it, or a copied passage—even without mentioning Reading Mirror, WeRead, books, or `（用我读过的书回答）`. Also use when the user invokes Reading Mirror, asks to “用我读过的书回答”, or places such markers in a note. Do not trigger solely for lookup, reading, summarization, transcription, or ordinary editing. Supports unique automatic write-back, ambiguity confirmation, multiple markers, incremental mirroring, exact retrieval, quotation verification, concurrency checks, and safe write-back.
 ---
 
 # Reading Mirror
@@ -92,7 +92,7 @@ python3 "$SKILL_DIR/scripts/apple_notes.py" inspect --id 'NOTE_ID'
 
 The second command adds plaintext, attachment/shared/password checks, marker identities, body hashes, and the pre-write modification timestamp that the general-purpose upstream CLI does not provide. Use the guarded snapshot as the only write source of truth.
 
-Treat an explicit request such as “用 Reading Mirror 回答备忘录 X” as authorization to update that same note after the response is ready. Ask again immediately before writing when the note is shared because collaborators will see the change.
+Treat any explicit request to answer or respond to a particular note—or to one specific item or passage inside it—as a Reading Mirror request and authorization to update that same note after the response is ready. This applies even when the user does not mention Reading Mirror, WeRead, books, or the marker. Do not infer this authorization from requests that only locate, read, summarize, transcribe, export, format, or otherwise edit a note without asking for a substantive response. Ask again immediately before writing when the note is shared because collaborators will see the change.
 
 Read [references/apple-notes-safety.md](references/apple-notes-safety.md) before any write.
 
