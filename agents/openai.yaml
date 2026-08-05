@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reading Mirror"
+  short_description: "以微信读书划线和笔记回应并安全写回 Apple 备忘录"
+  default_prompt: "使用 $reading-mirror 回答 Apple 备忘录《关于积累的困惑》。"
